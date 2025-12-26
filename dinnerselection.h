@@ -19,5 +19,11 @@ public:
 
 private:
     Ui::DinnerSelection *ui;
+private slots:
+    void snapSliderToStep(int value);
+private slots:
+    void increasePrice();
+    void decreasePrice();
+
 };
 #endif // DINNERSELECTION_H
