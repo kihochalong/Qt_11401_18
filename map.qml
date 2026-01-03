@@ -4,7 +4,17 @@ import QtPositioning 6.5
 import QtQuick.Controls 2.15
 
 Item {
+    id: root
     anchors.fill: parent
+
+    // 提供給 C++ 呼叫的介面
+    function updateMapMarker(lat, lon, name) {
+        map.center = QtPositioning.coordinate(lat, lon)
+        marker.coordinate = QtPositioning.coordinate(lat, lon)
+        marker.visible = true
+        markerLabel.text = name
+        map.zoomLevel = 16 // 抽中時放大顯示
+    }
 
     Plugin {
         id: mapPlugin
@@ -15,9 +25,43 @@ Item {
         id: map
         anchors.fill: parent
         plugin: mapPlugin
-
         center: QtPositioning.coordinate(23.7019, 120.4307)
         zoomLevel: 14
+
+        MapQuickItem {
+            id: marker
+            visible: true
+            anchorPoint.x: markerContent.width / 2
+            anchorPoint.y: markerContent.height
+            coordinate: QtPositioning.coordinate(0, 0)
+
+            sourceItem: Column {
+                id: markerContent
+                spacing: 2
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: markerLabel.contentWidth + 10
+                    height: markerLabel.contentHeight + 4
+                    color: "white"
+                    radius: 4
+                    border.color: "red"
+                    border.width: 1
+                    Text {
+                        id: markerLabel
+                        anchors.centerIn: parent
+                        font.bold: true
+                        color: "black"
+                    }
+                }
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: 15; height: 15
+                    radius: 7.5
+                    color: "red"
+                    border.color: "white"
+                }
+            }
+        }
 
         property bool dragging: false
         property real startX: 0
@@ -27,7 +71,6 @@ Item {
 
         MouseArea {
             anchors.fill: parent
-
             onPressed: {
                 map.dragging = true
                 map.startX = mouse.x
@@ -35,21 +78,18 @@ Item {
                 map.startLat = map.center.latitude
                 map.startLon = map.center.longitude
             }
-
             onPositionChanged: {
                 if (map.dragging) {
                     var baseFactor = 0.00005
                     var referenceZoom = 14
                     var dx = mouse.x - map.startX
                     var dy = mouse.y - map.startY
-
                     var zoomScale = Math.pow(2, referenceZoom - map.zoomLevel)
                     var factor = baseFactor * zoomScale
-
-                    map.center.latitude  = map.startLat + dy * factor
-                    map.center.longitude = map.startLon - dx * factor
+                    map.center = QtPositioning.coordinate(map.startLat + dy * factor, map.startLon - dx * factor)
                 }
             }
+            onReleased: map.dragging = false
 
             WheelHandler {
                 acceptedDevices: PointerDevice.Mouse
@@ -57,62 +97,6 @@ Item {
                     map.zoomLevel += event.angleDelta.y > 0 ? 0.2 : -0.2
                 }
             }
-
-            onReleased: {
-                map.dragging = false
-            }
         }
     }
-        PositionSource {
-            id: positionSource
-            updateInterval: 1000
-            active: false
-
-            onPositionChanged: {
-                var coord = position.coordinate
-                if (coord.isValid) {
-                    map.center = QtPositioning.coordinate(coord.latitude, coord.longitude)
-                    map.zoomLevel = 15
-
-                    locationUpdated(coord.latitude, coord.longitude)
-
-                    stop()
-                }
-            }
-
-            onSourceErrorChanged: {
-                console.log("定位錯誤碼:", sourceError)
-                if (sourceError === PositionSource.AccessError) {
-                    console.log("錯誤：作業系統拒絕存取位置（請檢查 Windows 隱私設定）")
-                } else if (sourceError === PositionSource.ClosedError) {
-                    console.log("錯誤：定位服務已關閉")
-                }
-            }
-        }
-
-        Dialog {
-            id: permissionDialog
-            title: "位置存取權限"
-            anchors.centerIn: parent
-            modal: true
-            standardButtons: Dialog.Ok | Dialog.Cancel
-
-            Text {
-                text: "是否允許程式定位並跳轉地圖？"
-                padding: 20
-            }
-
-            onAccepted: {
-                console.log("使用者按下 OK，啟動 PositionSource...")
-                positionSource.start()
-            }
-        }
-
-        Button {
-            text: "📍定位"
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 30
-            onClicked: permissionDialog.open()
-        }
 }

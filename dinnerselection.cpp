@@ -57,31 +57,37 @@ DinnerSelection::DinnerSelection(QWidget *parent)
         QJsonObject picked = currentFilteredRestaurants[randomIndex];
 
         QString name = picked["name"].toString();
+        QJsonObject locObj = picked["geometry"].toObject()["location"].toObject();
+        double lat = locObj["lat"].toDouble();
+        double lon = locObj["lng"].toDouble();
+
+        QObject *rootObj = mapWidget->rootObject();
+        if (rootObj) {
+            QMetaObject::invokeMethod(rootObj, "updateMapMarker",
+                                      Q_ARG(QVariant, lat),
+                                      Q_ARG(QVariant, lon),
+                                      Q_ARG(QVariant, name));
+        }
+
         double rating = picked["rating"].toDouble(-1);
         int priceLevel = picked["price_level"].toInt(-1);
 
-        QJsonObject loc = picked["geometry"].toObject()["location"].toObject();
-        double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
-        double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
+        double dLat = (lat - 23.7019) * 111.0;
+        double dLon = (lon - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
         double distanceKm = sqrt(dLat * dLat + dLon * dLon);
 
         QString priceRange;
         switch (priceLevel) {
-        case 0:  priceRange = "100內"; break;
-        case 1:  priceRange = "100~200"; break;
-        case 2:  priceRange = "200~300"; break;
-        case 3:  priceRange = "300~500"; break;
-        case 4:  priceRange = "500以上"; break;
+        case 0: priceRange = "100內"; break;
+        case 1: priceRange = "100~200"; break;
+        case 2: priceRange = "200~300"; break;
+        case 3: priceRange = "300~500"; break;
+        case 4: priceRange = "500以上"; break;
         default: priceRange = "未知"; break;
         }
 
-        // 顯示在 labelRandomResult 上
         ui->labelRandomResult->setText(
-            QString("🎲 隨機結果：\n"
-                    "店名：%1\n"
-                    "評分：⭐ %2\n"
-                    "價位：💰 %3\n"
-                    "距離：📍 %4 km")
+            QString("🎲 隨機結果：\n店名：%1\n⭐ 評分：%2\n💰 價位：%3\n📍 距離：%4 km")
                 .arg(name)
                 .arg(rating < 0 ? "無" : QString::number(rating))
                 .arg(priceRange)
@@ -270,5 +276,42 @@ void DinnerSelection::applyFiltersAndShow()
 
     if (currentFilteredRestaurants.isEmpty()) {
         ui->listRestaurant->addItem("⚠️ 沒有符合篩選條件的餐廳");
+    }
+    if (!currentFilteredRestaurants.isEmpty()) {
+        int dailyIndex = QRandomGenerator::global()->bounded(currentFilteredRestaurants.size());
+        QJsonObject dailyPicked = currentFilteredRestaurants[dailyIndex];
+
+        QString dailyName = dailyPicked["name"].toString();
+        double dailyRating = dailyPicked["rating"].toDouble(-1);
+        int dailyPriceLevel = dailyPicked["price_level"].toInt(-1);
+
+        QJsonObject loc = dailyPicked["geometry"].toObject()["location"].toObject();
+        double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
+        double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
+        double dailyDistance = sqrt(dLat * dLat + dLon * dLon);
+
+        QString dailyPriceRange;
+        switch (dailyPriceLevel) {
+        case 0:  dailyPriceRange = "100內"; break;
+        case 1:  dailyPriceRange = "100~200"; break;
+        case 2:  dailyPriceRange = "200~300"; break;
+        case 3:  dailyPriceRange = "300~500"; break;
+        case 4:  dailyPriceRange = "500以上"; break;
+        default: dailyPriceRange = "未知"; break;
+        }
+        ui->label->setText(
+            QString("✨ 每日推薦：\n"
+                    "店名：%1\n"
+                    "評分：⭐ %2\n"
+                    "價位：💰 %3\n"
+                    "距離：📍 %4 km")
+                .arg(dailyName)
+                .arg(dailyRating < 0 ? "無" : QString::number(dailyRating))
+                .arg(dailyPriceRange)
+                .arg(QString::number(dailyDistance, 'f', 2))
+            );
+
+    } else {
+        ui->label->setText("✨ 每日推薦：\n目前無符合條件的店家");
     }
 }
