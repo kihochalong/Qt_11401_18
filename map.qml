@@ -16,7 +16,7 @@ Item {
         anchors.fill: parent
         plugin: mapPlugin
 
-        center: QtPositioning.coordinate(23.7092, 120.5420)
+        center: QtPositioning.coordinate(23.7019, 120.4307)
         zoomLevel: 14
 
         property bool dragging: false
@@ -63,27 +63,22 @@ Item {
             }
         }
     }
-
         PositionSource {
             id: positionSource
             updateInterval: 1000
             active: false
 
             onPositionChanged: {
-                console.log("--- 定位信號觸發 ---")
                 var coord = position.coordinate
                 if (coord.isValid) {
-                    console.log("抓到有效座標:", coord.latitude, coord.longitude)
-
                     map.center = QtPositioning.coordinate(coord.latitude, coord.longitude)
                     map.zoomLevel = 15
 
+                    locationUpdated(coord.latitude, coord.longitude)
+
                     stop()
-                } else {
-                    console.log("抓到的座標無效 (isValid = false)")
                 }
             }
-
 
             onSourceErrorChanged: {
                 console.log("定位錯誤碼:", sourceError)
