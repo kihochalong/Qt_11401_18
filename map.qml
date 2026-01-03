@@ -5,7 +5,6 @@ import QtQuick.Controls 2.15
 
 Item {
     anchors.fill: parent
-
     Plugin {
         id: mapPlugin
         name: "osm"
@@ -16,7 +15,7 @@ Item {
         anchors.fill: parent
         plugin: mapPlugin
 
-        center: QtPositioning.coordinate(23.7092, 120.5420)
+        center: QtPositioning.coordinate(23.6978, 120.5347)
         zoomLevel: 14
 
         property bool dragging: false
@@ -24,6 +23,34 @@ Item {
         property real startY: 0
         property real startLat: 0
         property real startLon: 0
+        MapQuickItem {
+            id: userLocation
+            anchorPoint.x: sourceItem.width / 2
+            anchorPoint.y: sourceItem.height / 2
+            coordinate: fixedCoordinate
+            visible:true
+
+            sourceItem: Rectangle {
+                width: 16
+                height: 16
+                radius: 8
+                color: "#1E90FF"
+                border.color: "white"
+                border.width: 2
+            }
+        }
+        Behavior on center {
+            CoordinateAnimation {
+                duration: 800
+                easing.type: Easing.InOutQuad
+            }
+        }
+
+        Behavior on zoomLevel {
+            NumberAnimation {
+                duration: 600
+            }
+        }
 
         MouseArea {
             anchors.fill: parent
@@ -63,37 +90,33 @@ Item {
             }
         }
     }
+    PositionSource {
+        id: positionSource
+        updateInterval: 1000
+        active:true
+        onPositionChanged:{
+            console.log("--- 定位信號觸發 ---")
+            var coord = position.coordinate
+            if (coord.isValid) {
+                console.log("抓到有效座標:", coord.latitude, coord.longitude)
+                map.center = QtPositioning.coordinate(coord.latitude, coord.longitude)
+                map.zoomLevel = 15
 
-        PositionSource {
-            id: positionSource
-            updateInterval: 1000
-            active: false
-
-            onPositionChanged: {
-                console.log("--- 定位信號觸發 ---")
-                var coord = position.coordinate
-                if (coord.isValid) {
-                    console.log("抓到有效座標:", coord.latitude, coord.longitude)
-
-                    map.center = QtPositioning.coordinate(coord.latitude, coord.longitude)
-                    map.zoomLevel = 15
-
-                    stop()
-                } else {
-                    console.log("抓到的座標無效 (isValid = false)")
-                }
-            }
-
-
-            onSourceErrorChanged: {
-                console.log("定位錯誤碼:", sourceError)
-                if (sourceError === PositionSource.AccessError) {
-                    console.log("錯誤：作業系統拒絕存取位置（請檢查 Windows 隱私設定）")
-                } else if (sourceError === PositionSource.ClosedError) {
-                    console.log("錯誤：定位服務已關閉")
-                }
+                stop()
+            } else {
+                console.log("抓到的座標無效 (isValid = false)")
             }
         }
+        onSourceErrorChanged: {
+            console.log("定位錯誤碼:", sourceError)
+            if (sourceError === PositionSource.AccessError) {
+                console.log("錯誤：作業系統拒絕存取位置（請檢查 Windows 隱私設定）")
+                }
+            else if (sourceError === PositionSource.ClosedError) {
+                console.log("錯誤：定位服務已關閉")
+            }
+        }
+    }
 
         Dialog {
             id: permissionDialog
@@ -110,6 +133,7 @@ Item {
             onAccepted: {
                 console.log("使用者按下 OK，啟動 PositionSource...")
                 positionSource.start()
+                fallbackTimer.start()
             }
         }
 
@@ -118,6 +142,9 @@ Item {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.margins: 30
-            onClicked: permissionDialog.open()
+            onClicked:{
+                map.center=fixedCoordinate
+                map.zoomLevel=16
+            }
         }
 }
