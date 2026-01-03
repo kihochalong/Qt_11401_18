@@ -52,16 +52,40 @@ DinnerSelection::DinnerSelection(QWidget *parent)
             ui->labelRandomResult->setText("🎲 隨機選取\n請先進行篩選");
             return;
         }
+
         int randomIndex = QRandomGenerator::global()->bounded(currentFilteredRestaurants.size());
         QJsonObject picked = currentFilteredRestaurants[randomIndex];
 
         QString name = picked["name"].toString();
         double rating = picked["rating"].toDouble(-1);
+        int priceLevel = picked["price_level"].toInt(-1);
 
+        QJsonObject loc = picked["geometry"].toObject()["location"].toObject();
+        double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
+        double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
+        double distanceKm = sqrt(dLat * dLat + dLon * dLon);
+
+        QString priceRange;
+        switch (priceLevel) {
+        case 0:  priceRange = "100內"; break;
+        case 1:  priceRange = "100~200"; break;
+        case 2:  priceRange = "200~300"; break;
+        case 3:  priceRange = "300~500"; break;
+        case 4:  priceRange = "500以上"; break;
+        default: priceRange = "未知"; break;
+        }
+
+        // 顯示在 labelRandomResult 上
         ui->labelRandomResult->setText(
-            QString("🎲 隨機選取：\n%1\n⭐ %2")
+            QString("🎲 隨機結果：\n"
+                    "店名：%1\n"
+                    "評分：⭐ %2\n"
+                    "價位：💰 %3\n"
+                    "距離：📍 %4 km")
                 .arg(name)
                 .arg(rating < 0 ? "無" : QString::number(rating))
+                .arg(priceRange)
+                .arg(QString::number(distanceKm, 'f', 2))
             );
     });
     mapWidget = new QQuickWidget(this);
@@ -142,7 +166,7 @@ void DinnerSelection::fetchPlaces(double lat, double lon, QString pageToken)
         query.addQueryItem("pagetoken", pageToken);
     } else {
         query.addQueryItem("location", QString("%1,%2").arg(lat).arg(lon));
-        query.addQueryItem("radius", "2000"); // 預設抓取 2 公里內的原始資料，後續再由程式篩選
+        query.addQueryItem("radius", "2000");
         query.addQueryItem("type", "restaurant");
         query.addQueryItem("language", "zh-TW");
     }
@@ -161,13 +185,11 @@ void DinnerSelection::onPlacesReply(QNetworkReply *reply)
     QByteArray data = reply->readAll();
     QJsonObject root = QJsonDocument::fromJson(data).object();
 
-    // 1. 將新結果「追加」進去，不要用 clear()
     QJsonArray results = root["results"].toArray();
     for (const QJsonValue &v : results) {
         allRestaurants.append(v.toObject());
     }
 
-    // 2. 處理分頁
     m_nextPageToken = root["next_page_token"].toString();
 
     if (!m_nextPageToken.isEmpty()) {
@@ -175,7 +197,6 @@ void DinnerSelection::onPlacesReply(QNetworkReply *reply)
             fetchPlaces(23.7019, 120.4307, m_nextPageToken);
         });
     } else {
-        // 全部抓完才執行初次篩選顯示
         applyFiltersAndShow();
     }
 
@@ -184,69 +205,65 @@ void DinnerSelection::onPlacesReply(QNetworkReply *reply)
 
 void DinnerSelection::applyFiltersAndShow()
 {
-    // --- 1. 計算目標價格等級 ---
     int sliderValue = ui->horizontalSlider->value();
-    int targetPriceLevel = -1; // 預設 -1 代表不限金額
+    int maxPriceLevel = -1;
+    if (sliderValue == 100) maxPriceLevel = 0;
+    else if (sliderValue == 200) maxPriceLevel = 1;
+    else if (sliderValue == 300) maxPriceLevel = 2;
+    else if (sliderValue == 400) maxPriceLevel = 3;
+    else if (sliderValue >= 500) maxPriceLevel = 4;
 
-    if (sliderValue != 0) {
-        if (sliderValue <= 200) targetPriceLevel = 1; // $100-200
-        else targetPriceLevel = (sliderValue / 100) - 1; // 300->2, 400->3...
-    }
-    if (targetPriceLevel > 4) targetPriceLevel = 4;
-
-    // --- 2. 初始化清單與抽籤池 ---
     ui->listRestaurant->clear();
     currentFilteredRestaurants.clear();
 
-    // --- 3. 評分門檻設定 ---
     double minRatingThreshold = 0.0;
     bool isRatingSelected = ui->checkBox->isChecked() || ui->checkBox_2->isChecked() || ui->checkBox_3->isChecked();
     if (ui->checkBox_3->isChecked()) minRatingThreshold = 4.5;
     else if (ui->checkBox_2->isChecked()) minRatingThreshold = 4.0;
     else if (ui->checkBox->isChecked()) minRatingThreshold = 3.5;
 
-    // --- 4. 進行過濾 ---
     for (const QJsonObject &obj : allRestaurants) {
         QString name = obj["name"].toString();
         double rating = obj["rating"].toDouble(-1);
         int priceLevel = obj["price_level"].toInt(-1);
 
-        // A. 評分篩選：有選評分時，剔除「有分數且分數不夠」的店家
         if (isRatingSelected && rating >= 0 && rating < minRatingThreshold)
             continue;
 
-        // B. 價格篩選：非 0 元時，剔除「有標註價格且價格不符」的店家
-        if (targetPriceLevel != -1 && priceLevel != -1 && priceLevel != targetPriceLevel)
-            continue;
+        if (sliderValue != 0) {
+            if (priceLevel != -1 && priceLevel > maxPriceLevel)
+                continue;
+        }
 
-        // C. 距離篩選
         if (!obj.contains("geometry")) continue;
         QJsonObject loc = obj["geometry"].toObject()["location"].toObject();
         double dLat = (loc["lat"].toDouble() - 23.7019) * 111.0;
         double dLon = (loc["lng"].toDouble() - 120.4307) * 111.0 * cos(23.7019 * M_PI / 180.0);
         double distanceKm = sqrt(dLat * dLat + dLon * dLon);
 
-        if (distanceKm > maxDistanceKm) // maxDistanceKm 由距離 Slider 控制
+        if (distanceKm > maxDistanceKm)
             continue;
 
-        // --- D. 通過所有門檻，存入結果 ---
         currentFilteredRestaurants.append(obj);
 
-        QString avgPriceText;
+        QString priceRange;
         switch (priceLevel) {
-        case 0: avgPriceText = "$1–100"; break;
-        case 1: avgPriceText = "$100–200"; break;
-        case 2: avgPriceText = "$200–300"; break;
-        case 3: avgPriceText = "$300–500"; break;
-        case 4: avgPriceText = "$500+"; break;
-        default: avgPriceText = "未提供價格"; break;
+        case 0:  priceRange = "100內"; break;
+        case 1:  priceRange = "100~200"; break;
+        case 2:  priceRange = "200~300"; break;
+        case 3:  priceRange = "300~500"; break;
+        case 4:  priceRange = "500以上"; break;
+        default: priceRange = "未知價位"; break;
         }
 
         ui->listRestaurant->addItem(
-            QString("🍽 %1\n⭐ %2 | 💰 %3\n📍 %4 km")
+            QString("🍽 %1\n"
+                    " 💰 %3\n"
+                    "⭐ %2\n"
+                    "📍 %4 km")
                 .arg(name)
                 .arg(rating < 0 ? "無" : QString::number(rating))
-                .arg(avgPriceText)
+                .arg(priceRange)
                 .arg(QString::number(distanceKm, 'f', 2))
             );
     }
