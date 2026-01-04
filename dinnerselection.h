@@ -32,8 +32,7 @@ private slots:
     void decreasePrice();
     void onPlacesReply(QNetworkReply *reply);
     void applyFiltersAndShow();
-    void prepareManualAdd(double lat = 23.7031, double lon = 120.4301);
-
+    void addRestaurantToUI(const QJsonObject &obj);
 private:
     Ui::DinnerSelection *ui;
     QQuickWidget *mapWidget;
@@ -47,11 +46,7 @@ private:
     double minRating = 0.0;
     int maxDistanceKm = 5;
 
-    // --- 核心功能函式 ---
-    // 【修正處】確保 fetchPlaces 只有這一個宣告，且帶有預設參數
     void fetchPlaces(double lat, double lon, QString pageToken = "");
-
-    // 如果您用不到 showRestaurants 可以刪除，或保留宣告
     void showRestaurants(const QJsonArray &results);
     void showAddConfirmation();
 
